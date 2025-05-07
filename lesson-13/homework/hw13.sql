@@ -107,37 +107,35 @@ SELECT
 FROM Students;
 
 -- 17. Sum the mathematical equations in Equations table
-SELECT 
-    Equation,
-    CASE 
-        WHEN Equation REGEXP '^[0-9]+$' THEN CAST(Equation AS SIGNED)
-        ELSE (
-            SELECT SUM(CAST(num AS SIGNED) * IF(sign = '-', -1, 1))
-            FROM (
-                SELECT 
-                    SUBSTRING_INDEX(SUBSTRING_INDEX(Equation, '+', numbers.n), '+', -1) AS num,
-                    IF(LOCATE('-', SUBSTRING_INDEX(SUBSTRING_INDEX(Equation, '+', numbers.n), '+', -1)) > 0, '-', '+') AS sign
-                FROM (
-                    SELECT a.N + b.N * 10 + 1 AS n
-                    FROM (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) a,
-                         (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) b
-                ) numbers
-                WHERE numbers.n <= LENGTH(Equation) - LENGTH(REPLACE(Equation, '+', '')) + 1
-                UNION
-                SELECT 
-                    SUBSTRING_INDEX(SUBSTRING_INDEX(Equation, '-', numbers.n), '-', -1) AS num,
-                    '-' AS sign
-                FROM (
-                    SELECT a.N + b.N * 10 + 1 AS n
-                    FROM (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) a,
-                         (SELECT 0 AS N UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4) b
-                ) numbers
-                WHERE numbers.n <= LENGTH(Equation) - LENGTH(REPLACE(Equation, '-', '')) + 1
-            ) parsed
-            WHERE num REGEXP '^[0-9]+$'
-        )
-    END AS TotalSum
-FROM Equations;
+DECLARE @Equation VARCHAR(200);
+DECLARE @SQL NVARCHAR(400);
+DECLARE @Result INT;
+
+-- Cursor to iterate over each equation
+DECLARE equation_cursor CURSOR FOR
+SELECT Equation FROM Equations;
+
+OPEN equation_cursor;
+FETCH NEXT FROM equation_cursor INTO @Equation;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    SET @SQL = 'SELECT @ResultOut = ' + @Equation;
+
+    EXEC sp_executesql 
+        @SQL, 
+        N'@ResultOut INT OUTPUT', 
+        @ResultOut = @Result OUTPUT;
+
+    UPDATE Equations
+    SET TotalSum = @Result
+    WHERE Equation = @Equation;
+
+    FETCH NEXT FROM equation_cursor INTO @Equation;
+END;
+
+CLOSE equation_cursor;
+DEALLOCATE equation_cursor;
 
 -- 18. Find students that share the same birthday (Student table)
 SELECT Birthday, GROUP_CONCAT(StudentName) AS students
